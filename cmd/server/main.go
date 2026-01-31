@@ -9,15 +9,28 @@ import (
 	"syscall"
 	"time"
 	"go-pulse/internal/config"
-
-
+	"go-pulse/internal/worker"
 )
 
 func main() {
 	cfg := config.Load()
 
+	// Initialize worker pool
+	pool := worker.NewPool(cfg.WorkerCount)
+	pool.Start()
+
+	// Submit test jobs
+	pool.Submit(worker.Job{URL: "https://google.com"})
+	pool.Submit(worker.Job{URL: "https://github.com"})
+	pool.Submit(worker.Job{URL: "https://httpstat.us/500"})
+	pool.Submit(worker.Job{URL: "https://httpstat.us/200?sleep=2000"})
+
+	// HTTP server setup
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -25,9 +38,9 @@ func main() {
 	}
 
 	go func() {
-		log.Println("🚀 Go-Pulse starting on port", cfg.Port)
+		log.Println("🚀 Go-Pulse running on port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			log.Fatal(err)
 		}
 	}()
 
@@ -36,20 +49,13 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	log.Println("🛑 Shutting down Go-Pulse...")
+	log.Println("🛑 Shutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("shutdown failed: %v", err)
-	}
+	server.Shutdown(ctx)
+	close(pool.Jobs)
 
-	log.Println("✅ Server exited cleanly")
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-	
+	log.Println("✅ Shutdown complete")
 }
