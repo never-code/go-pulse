@@ -124,7 +124,3 @@ func (p *Pool) worker(id int) {
 1. Fork the repository.
 2. Create a feature branch off `develop`.
 3. Commit your changes and open a pull request against `develop`.
-
-## License
-
-No license is currently specified. Please contact the repository owner before redistributing or using in production.
